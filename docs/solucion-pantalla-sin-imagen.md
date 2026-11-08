@@ -57,7 +57,7 @@ El proyecto está en `~/Documents/Temp/testEps32c6/test-placa`, fuera de este re
   - En [`src/Runtime.cpp`](../src/Runtime.cpp), quitada la gestión de toques (`touch.tap`), la cola de eventos con reintentos y las respuestas del servidor a esos toques (`ui.result`, `event.ack`).
   - Quitados los avisos emergentes de `Display::feedback`, porque solo salían al tocar.
 - Protocolo: el `device.hello` ahora envía `display.touch=false` y versión `1.0.0`, y ya no anuncia las capacidades `touch.tap` ni `ui.result`.
-- Plantillas: el campo `actions` (zonas táctiles) se sigue aceptando, porque el servidor lo exige, pero se ignora. Los `button` se dibujan solo como elemento visual.
+- Plantillas: el campo `actions` se sigue aceptando, porque el servidor lo exige. Al principio se ignoraba; después pasó a dispararse con el botón BOOT (GPIO 9). Una pulsación corta ejecuta la acción seleccionada y mantenerlo 0,7 s pasa a la siguiente, que se marca con un recuadro amarillo. Se envía el mismo `touch.tap` con `"source":"button"`.
 
 ## Cómo comprobarlo
 

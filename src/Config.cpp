@@ -1,5 +1,6 @@
 #include "Config.h"
 #include <WiFi.h>
+#include <LittleFS.h>
 #include <esp_system.h>
 namespace {
   String randomPassword(){
@@ -38,6 +39,11 @@ bool Config::save(const String& url,const String& token,const String& caBody){
   settings_.url=url;settings_.token=token;settings_.caPem=caBody=="PUBLIC"?"":pem;
   return true;
 }
+String Config::deviceId(){
+  uint64_t mac=ESP.getEfuseMac();char s[20];
+  snprintf(s,sizeof(s),"md-%04X%08X",unsigned((mac>>32)&0xffff),unsigned(mac&0xffffffff));
+  return String(s);
+}
 bool Config::begin(Display& display){
   prefs_.begin("metadisplay",false);
   settings_.url=prefs_.getString("url","");
@@ -74,6 +80,10 @@ bool Config::portal(Display& display){
   WiFiManagerParameter urlP("url","Servidor WebSocket (wss://)",url,sizeof(url));
   WiFiManagerParameter tokenP("token","Bearer token (sin prefijo)",token,sizeof(token));
   WiFiManagerParameter caP("ca","CA privada en base64 DER (opcional)",caBody,sizeof(caBody));
+  // Shown on the setup page too, so the ID can be copied from the phone.
+  const String idHtml="<p>ID del dispositivo para registrar en tu servidor:<br><b style='font-size:1.4em'>"+deviceId()+"</b></p>";
+  WiFiManagerParameter idP(idHtml.c_str());
+  wm.addParameter(&idP);
   wm.addParameter(&urlP);wm.addParameter(&tokenP);wm.addParameter(&caP);
   wm.startConfigPortal(ssid,settings_.portalPass.c_str());
   // AP password is random per unit and shown physically on its LCD; the screen
@@ -100,8 +110,12 @@ bool Config::portal(Display& display){
   }
   return true;
 }
-void Config::clearNetworkAndReboot(){
-  WiFi.disconnect(true,true); delay(200); ESP.restart();
+void Config::factoryReset(){
+  // URL, token, CAs and portal password; saved WiFi; cached template and values.
+  prefs_.clear();
+  WiFi.disconnect(true,true);
+  LittleFS.end(); LittleFS.format();
+  delay(200); ESP.restart();
 }
 
 bool Config::stagePrivateCA(const String &base64Der){

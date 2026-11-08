@@ -2,7 +2,8 @@
 #include "Board.h"
 #include <stdlib.h>
 
-bool Display::begin(){
+bool Display::begin(const String& deviceId){
+  deviceId_=deviceId;
   pinMode(board::SD_CS, OUTPUT); digitalWrite(board::SD_CS, HIGH);
   pinMode(board::LCD_BL, OUTPUT); digitalWrite(board::LCD_BL, LOW);
   bus_ = new Arduino_HWSPI(board::LCD_DC, board::LCD_CS, board::LCD_SCK, board::LCD_MOSI);
@@ -30,6 +31,15 @@ void Display::status(const String& line1, const String& line2){
   gfx_->setCursor(8,42); gfx_->print("MetaDisplay");
   gfx_->setTextSize(1); gfx_->setCursor(8,102); gfx_->print(line1);
   gfx_->setCursor(8,121); gfx_->print(line2);
+  drawDeviceId(250);
+}
+// Label plus the ID in size 2. Size 2 is 12 px per char (15 chars = 180 px > 172 px),
+// so chars go 11 px apart to keep the ID big and on one line.
+void Display::drawDeviceId(int y){
+  gfx_->setTextSize(1); gfx_->setTextColor(0xC618); gfx_->setCursor(8,y); gfx_->print("ID para tu servidor:");
+  gfx_->setTextSize(2); gfx_->setTextColor(0xFFE0);
+  const int x0=max(0,(board::WIDTH-(int)deviceId_.length()*11)/2);
+  for(size_t i=0;i<deviceId_.length();i++){gfx_->setCursor(x0+i*11,y+14); gfx_->print(deviceId_[i]);}
 }
 void Display::portalInfo(const String& ssid,const String& pass,const String& ip,bool clientJoined){
   if(!gfx_) return;
@@ -42,6 +52,7 @@ void Display::portalInfo(const String& ssid,const String& pass,const String& ip,
   // 192.168.4.1 is the ESP32 soft-AP address when no static IP is set.
   const String ipNote=ip=="192.168.4.1"?"   (IP predeterminada)":"";
   line(14,2,0xffff,"MetaDisplay");
+  drawDeviceId(262);
   if(clientJoined){
     line(38,1,0xC618,"Modo configuracion");
     line(84,2,0x07E0,"Alguien se");
@@ -65,7 +76,7 @@ void Display::portalInfo(const String& ssid,const String& pass,const String& ip,
   line(222,1,0xffff,"4. Elige tu WiFi, pon el");
   line(234,1,0xffff,"   servidor y el token,");
   line(246,1,0xffff,"   y pulsa Save.");
-  line(284,1,0xC618,"Esperando conexion...");
+  line(304,1,0xC618,"Esperando conexion...");
 }
 String Display::text(JsonObjectConst el, JsonVariantConst data){
   const char* bind=el["bind"] | "";
@@ -83,7 +94,7 @@ float Display::number(JsonObjectConst el,JsonVariantConst data){
   if(*bind) return data[bind].as<float>();
   return el["value"] | 0.f;
 }
-void Display::render(JsonVariantConst layout,JsonVariantConst values,bool online){
+void Display::render(JsonVariantConst layout,JsonVariantConst values,bool online,int selectedAction){
   if(!gfx_) return;
   gfx_->fillScreen(color(layout["background"] | "#090D18",0x0000));
   for(JsonObjectConst e:layout["elements"].as<JsonArrayConst>()){
@@ -111,5 +122,27 @@ void Display::render(JsonVariantConst layout,JsonVariantConst values,bool online
       }
     }
   }
+  // Outline marks the action the button runs when the template has more than one.
+  if(selectedAction>=0){
+    JsonObjectConst a=layout["actions"][selectedAction];
+    if(!a.isNull()) gfx_->drawRoundRect((a["x"]|0)-2,(a["y"]|0)-2,(a["w"]|0)+4,(a["h"]|0)+4,4,0xFFE0);
+  }
   gfx_->fillCircle(board::WIDTH-7,7,3,online?0x07E0:0xF800);
+  // A re-render would otherwise erase a toast that is still showing.
+  if(feedbackActive_) drawFeedback();
+}
+void Display::feedback(const String& message,uint16_t col,uint32_t durationMs){
+  if(!gfx_) return;
+  feedbackUntil_=millis()+durationMs; feedbackActive_=true;
+  feedbackText_=message.substring(0,24); feedbackColor_=col;
+  drawFeedback();
+}
+void Display::drawFeedback(){
+  gfx_->fillRoundRect(5,board::HEIGHT-40,board::WIDTH-10,35,5,0x2104);
+  gfx_->setTextColor(feedbackColor_);gfx_->setTextSize(1);gfx_->setCursor(11,board::HEIGHT-27);
+  gfx_->print(feedbackText_);
+}
+bool Display::serviceFeedback(){
+  if(feedbackActive_ && (int32_t)(millis()-feedbackUntil_)>=0){feedbackActive_=false;return true;}
+  return false;
 }

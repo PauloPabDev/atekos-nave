@@ -15,17 +15,17 @@ class WssClient {
   void disconnect();
  private:
   bool parseUrl();
-  bool connectNow();
+  bool connectNow(String& why);
   bool sendFrame(uint8_t opcode,const uint8_t* bytes,size_t len);
   void readIncoming();
   void handleFrame(uint8_t opcode,const uint8_t* bytes,size_t len);
-  void markOffline();
+  void markOffline(const String& why);
   String url_,token_,ca_,host_,path_;
   uint16_t port_=443;
   WiFiClientSecure client_;
   OnText onText_; OnState onState_;
   bool connected_=false;
-  uint32_t retryAt_=0, retryDelay_=2000, lastPing_=0,lastPong_=0;
+  uint32_t retryAt_=0, retryDelay_=2000, lastPing_=0,lastPong_=0,connectedAt_=0;
   static constexpr size_t MAX_FRAME=8192;
   uint8_t buffer_[MAX_FRAME+32]={0};
   size_t rxLen_=0;
