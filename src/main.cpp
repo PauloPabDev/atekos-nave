@@ -5,13 +5,16 @@
 #include "Config.h"
 #include "WssClient.h"
 #include "Runtime.h"
+#include "Console.h"
 
 Display display;
 Config config;
 WssClient wss;
 Runtime runtime;
+Console console;
 uint32_t wifiLost=0, wifiRetry=0;
 uint32_t buttonDown=0; bool buttonHeld=false;
+constexpr size_t MAX_SERIAL_RX=2048;
 
 // Short press (>=30 ms, debounce) runs the selected action; holding 700 ms selects the next one.
 void pollButton(){
@@ -25,24 +28,11 @@ void pollButton(){
   }
 }
 
-// Serial console, one command per line (needs a line ending: Enter in pio device monitor).
-void pollConsole(){
-  static String line;
-  while(Serial.available()){
-    const char c=Serial.read();
-    if(c!='\n' && c!='\r'){if(line.length()<64)line+=c;continue;}
-    line.trim();
-    if(line=="factory-reset"){
-      Serial.println("[CMD] factory-reset: borrando URL, token, CA, WiFi y plantilla. Reiniciando...");
-      display.status("Formateando...","Reiniciando en modo configuracion");
-      config.factoryReset();
-    } else if(line.length()) Serial.println("[CMD] desconocido: '"+line+"'. Comandos: factory-reset");
-    line="";
-  }
-}
-
 void setup(){
+  Serial.setRxBufferSize(MAX_SERIAL_RX); // a pasted token arrives while the loop may be busy
   Serial.begin(115200);
+  console.begin(display,config,wss,runtime);
+  config.onPortalTick([]{console.poll();});
   pinMode(board::BUTTON,INPUT_PULLUP);
   if(!display.begin(Config::deviceId()))Serial.println("Display init failed");
   bool configured=config.begin(display);
@@ -58,7 +48,7 @@ void setup(){
 }
 
 void loop(){
-  pollConsole();
+  console.poll();
   pollButton();
   if(WiFi.status()!=WL_CONNECTED){
     if(!wifiLost)wifiLost=millis();

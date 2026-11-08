@@ -13,6 +13,9 @@ namespace {
            url.indexOf('@')<0 && url.indexOf('#')<0 && url.indexOf(' ')<0 &&
            url.indexOf('\n')<0 && url.indexOf('\r')<0;
   }
+  bool validToken(const String &token){
+    return !token.isEmpty() && token.length()<=380 && token.indexOf('\r')<0 && token.indexOf('\n')<0;
+  }
   String makePem(String body){
     body.trim(); if(body.isEmpty()) return "";
     // A base64 DER encoded CA is pasteable into WiFiManager's ordinary input.
@@ -29,7 +32,7 @@ namespace {
   }
 }
 bool Config::save(const String& url,const String& token,const String& caBody){
-  if(!validUrl(url) || token.isEmpty() || token.length()>380 || token.indexOf('\r')>=0 || token.indexOf('\n')>=0)return false;
+  if(!validUrl(url) || !validToken(token))return false;
   const String pem=makePem(caBody);
   if(!caBody.isEmpty() && pem.isEmpty() && caBody!="PUBLIC")return false;
   prefs_.putString("url",url);
@@ -89,12 +92,15 @@ bool Config::portal(Display& display){
   // AP password is random per unit and shown physically on its LCD; the screen
   // switches when a phone joins or leaves. Portal stops on save or timeout.
   int clients=-1;
+  portalActive_=true;
   while(wm.getConfigPortalActive()){
     if(wm.process())break;
+    if(portalTick_)portalTick_();
     int now=WiFi.softAPgetStationNum();
     if(now!=clients){clients=now;Serial.printf("AP clients: %d\n",clients);display.portalInfo(ssid,settings_.portalPass,WiFi.softAPIP().toString(),clients>0);}
     delay(10);
   }
+  portalActive_=false;
   if(WiFi.status()!=WL_CONNECTED) return false;
   String newUrl(urlP.getValue()),newToken(tokenP.getValue()),newCa(caP.getValue());
   if(newCa.isEmpty() && !settings_.caPem.isEmpty()){
@@ -109,6 +115,20 @@ bool Config::portal(Display& display){
     return false;
   }
   return true;
+}
+bool Config::setUrl(const String& url){
+  if(!validUrl(url))return false;
+  prefs_.putString("url",url);settings_.url=url;
+  return true;
+}
+bool Config::setToken(const String& token){
+  if(!validToken(token))return false;
+  prefs_.putString("token",token);settings_.token=token;
+  return true;
+}
+void Config::wifiReset(){
+  WiFi.disconnect(true,true);
+  delay(200); ESP.restart();
 }
 void Config::factoryReset(){
   // URL, token, CAs and portal password; saved WiFi; cached template and values.

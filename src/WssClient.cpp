@@ -14,8 +14,7 @@ namespace {
   bool validHeaderValue(const String &v){return v.indexOf('\n')<0 && v.indexOf('\r')<0;}
 }
 void WssClient::configure(const String& url,const String& token,const String& customCAPem){
-  disconnect(); url_=url;token_=token;ca_=customCAPem;
-  retryAt_=0;retryDelay_=2000;
+  disconnect("reconfigured",true); url_=url;token_=token;ca_=customCAPem;
 }
 bool WssClient::parseUrl(){
   if(!url_.startsWith("wss://") || !validHeaderValue(url_) || !validHeaderValue(token_))return false;
@@ -79,15 +78,32 @@ bool WssClient::connectNow(String& why){
   if(onState_)onState_(true);
   return true;
 }
-void WssClient::markOffline(const String& why){
-  const bool was=connected_;connected_=false;client_.stop();rxLen_=0;
-  retryAt_=millis()+retryDelay_+(esp_random()%750);
-  retryDelay_=min(retryDelay_*2,60000UL);
-  if(was)Serial.printf("[WSS %lus] disconnected: %s (was up %lus, retry in %lums)\n",
-    millis()/1000,why.c_str(),(millis()-connectedAt_)/1000,retryAt_-millis());
+void WssClient::markOffline(const String& why,bool retryNow){
+  const bool was=connected_;connected_=false;client_.stop();rxLen_=0;lastError_=why;
+  if(retryNow){retryAt_=millis();retryDelay_=2000;}
+  else{retryAt_=millis()+retryDelay_+(esp_random()%750);retryDelay_=min(retryDelay_*2,60000UL);}
+  if(was)Serial.printf("[WSS %lus] disconnected: %s (was up %lus, %s)\n",millis()/1000,why.c_str(),
+    (millis()-connectedAt_)/1000,!enabled_?"no retry until wss-on":("retry in "+String(retryAt_-millis())+"ms").c_str());
   if(was && onState_)onState_(false);
 }
-void WssClient::disconnect(){connected_=false;client_.stop();rxLen_=0;}
+// Goes through markOffline so the runtime hears about it (screen dot, pending events).
+void WssClient::disconnect(const String& why,bool retryNow){
+  if(connected_){markOffline(why,retryNow);return;}
+  client_.stop();rxLen_=0;
+  if(retryNow){retryAt_=millis();retryDelay_=2000;}
+}
+void WssClient::reconnect(const String& why){disconnect(why,true);}
+void WssClient::setEnabled(bool on){
+  enabled_=on;
+  if(on){retryAt_=millis();retryDelay_=2000;}else disconnect("console_wss_off",false);
+}
+void WssClient::printStatus(Print& out) const{
+  if(!enabled_)out.println("[CMD] WSS: apagado (wss-on para encender)");
+  else if(connected_)out.printf("[CMD] WSS: conectado a %s:%u hace %lus\n",host_.c_str(),port_,(millis()-connectedAt_)/1000);
+  else out.printf("[CMD] WSS: desconectado, ultimo error: %s, reintento en %ldms\n",
+    lastError_.length()?lastError_.c_str():"-",max(0L,(long)(int32_t)(retryAt_-millis())));
+  out.printf("[CMD] log wss: %s\n",logTraffic_?"on":"off");
+}
 bool WssClient::sendFrame(uint8_t opcode,const uint8_t* bytes,size_t len){
   if(!connected_ || len>MAX_FRAME)return false;
   uint8_t hdr[8];size_t hs=2;
@@ -105,10 +121,16 @@ bool WssClient::sendFrame(uint8_t opcode,const uint8_t* bytes,size_t len){
   }
   return true;
 }
-bool WssClient::send(const String &json){return sendFrame(0x1,(const uint8_t*)json.c_str(),json.length());}
+bool WssClient::send(const String &json){
+  const bool ok=sendFrame(0x1,(const uint8_t*)json.c_str(),json.length());
+  if(logTraffic_)Serial.printf("[WSS >%s] %s\n",ok?"":" FAILED",json.c_str());
+  return ok;
+}
 void WssClient::handleFrame(uint8_t op,const uint8_t* bytes,size_t len){
   switch(op){
-    case 0x1: { String s; s.reserve(len+1);for(size_t i=0;i<len;i++)s+=(char)bytes[i]; if(onText_)onText_(s);break; }
+    case 0x1: { String s; s.reserve(len+1);for(size_t i=0;i<len;i++)s+=(char)bytes[i];
+      if(logTraffic_)Serial.printf("[WSS <] %s\n",s.c_str());
+      if(onText_)onText_(s);break; }
     case 0x8: { // close payload: 2-byte code, then an optional UTF-8 reason
       String why="server_close code="+String(len>=2?(bytes[0]<<8)|bytes[1]:0);
       if(len>2){why+=" reason=";for(size_t i=2;i<len;i++)why+=(char)bytes[i];}
@@ -142,6 +164,7 @@ void WssClient::readIncoming(){
   if(rxLen_>=sizeof(buffer_))markOffline("rx_buffer_full");
 }
 void WssClient::loop(){
+  if(!enabled_)return;
   if(WiFi.status()!=WL_CONNECTED){if(connected_)markOffline("wifi_lost");return;}
   if(!connected_){
     if((int32_t)(millis()-retryAt_)<0)return;

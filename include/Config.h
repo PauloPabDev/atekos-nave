@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <Preferences.h>
 #include <WiFiManager.h>
+#include <functional>
 #include "Display.h"
 struct Settings {String url, token, caPem, portalPass;};
 class Config {
@@ -10,6 +11,11 @@ class Config {
   static String deviceId(); // md-<MAC>: the name to register on the server
   const Settings& get() const {return settings_;}
   bool portal(Display &display);
+  bool portalActive() const {return portalActive_;}
+  void onPortalTick(std::function<void()> cb){portalTick_=cb;} // runs every portal loop
+  bool setUrl(const String &url);
+  bool setToken(const String &token);
+  void wifiReset(); // never returns: reboots into the setup portal
   bool stagePrivateCA(const String &base64Der);
   bool activateStagedCA();
   void confirmTrial();
@@ -18,5 +24,7 @@ class Config {
  private:
   Settings settings_;
   Preferences prefs_;
+  bool portalActive_=false;
+  std::function<void()> portalTick_;
   bool save(const String &url,const String &token,const String &caBody);
 };

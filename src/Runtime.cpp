@@ -64,7 +64,7 @@ bool Runtime::persistTemplate(){
 }
 void Runtime::sendHello(){
   JsonDocument d;d["type"]="device.hello";d["protocol"]=1;
-  d["deviceId"]=deviceId_;d["firmware"]="1.1.0";
+  d["deviceId"]=deviceId_;d["firmware"]=FIRMWARE_VERSION;
   d["display"]["width"]=board::WIDTH;d["display"]["height"]=board::HEIGHT;
   d["display"]["touch"]=false;d["display"]["color"]="RGB565";
   d["template"]["id"]=templateId_;d["template"]["version"]=templateVersion_;
@@ -162,15 +162,15 @@ void Runtime::sendEvent(const String& eventId,const String& json){
   }
   display_->feedback("Cola de eventos llena",0xF800);
 }
-void Runtime::button(bool longPress){
-  if(!hasTemplate_)return;
+bool Runtime::button(bool longPress){
+  if(!hasTemplate_)return false;
   JsonArrayConst actions=tmpl_["actions"];
-  if(actions.size()==0){display_->feedback("Sin acciones");return;}
+  if(actions.size()==0){display_->feedback("Sin acciones");return false;}
   if(selected_>=actions.size())selected_=0;
   if(longPress){
     selected_=(selected_+1)%actions.size();dirty_=true;
     display_->feedback(String("Accion: ")+(actions[selected_]["id"]|""));
-    return;
+    return true;
   }
   JsonObjectConst match=actions[selected_];
   String mode=match["mode"]|"remote";
@@ -188,6 +188,33 @@ void Runtime::button(bool longPress){
     event["uptimeMs"]=millis();
     String out;serializeJson(event,out);sendEvent(eventId,out);
   }
+  return true;
+}
+void Runtime::printStatus(Print& out) const{
+  int pending=0;for(const auto& p:pending_)if(p.active)pending++;
+  if(hasTemplate_)out.printf("[CMD] plantilla: %s v%u, eventos sin confirmar: %d\n",templateId_.c_str(),templateVersion_,pending);
+  else out.printf("[CMD] plantilla: ninguna, eventos sin confirmar: %d\n",pending);
+}
+void Runtime::printActions(Print& out) const{
+  JsonArrayConst actions=tmpl_["actions"];
+  if(!hasTemplate_ || actions.size()==0){out.println("[CMD] la plantilla no tiene acciones");return;}
+  const size_t current=selected_<actions.size()?selected_:0;
+  for(size_t i=0;i<actions.size();i++){
+    JsonObjectConst a=actions[i];
+    out.printf("[CMD] %s %u. %s  modo=%s evento=%s\n",i==current?"*":" ",unsigned(i+1),
+      a["id"]|"",a["mode"]|"remote",a["event"]|"tap");
+  }
+}
+void Runtime::printTemplate(Print& out) const{
+  if(!hasTemplate_){out.println("[CMD] no hay plantilla");return;}
+  serializeJson(tmpl_,out);out.println();
+}
+void Runtime::printValues(Print& out) const{serializeJson(data_,out);out.println();}
+void Runtime::clearTemplate(){
+  tmpl_.clear();hasTemplate_=false;templateId_="";templateVersion_=0;selected_=0;dirty_=true;
+  LittleFS.remove("/template.json");
+  // The next hello carries no template, so the server sends its current one.
+  socket_->reconnect("clear_template");
 }
 void Runtime::loop(){
   if(socket_->connected()){

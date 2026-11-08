@@ -5,12 +5,18 @@
 #include "WssClient.h"
 #include "FirmwareUpdate.h"
 #include "Config.h"
+constexpr const char* FIRMWARE_VERSION="1.2.0";
 class Runtime {
  public:
   void begin(Display& display,WssClient& socket,Config& config);
   void connected(bool up);
   void incoming(const String &text);
-  void button(bool longPress);
+  bool button(bool longPress); // false: no template with actions
+  void printStatus(Print& out) const;
+  void printActions(Print& out) const;
+  void printTemplate(Print& out) const;
+  void printValues(Print& out) const;
+  void clearTemplate();
   void loop();
  private:
   Display* display_=nullptr; WssClient* socket_=nullptr; Config* config_=nullptr;
