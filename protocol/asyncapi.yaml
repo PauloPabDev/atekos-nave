@@ -1,0 +1,114 @@
+asyncapi: 3.0.0
+info:
+  title: MetaDisplay C6 WebSocket Protocol
+  version: 1.1.0
+  description: >-
+    Mensajes JSON UTF-8 sobre WSS con Bearer en el handshake; no se admite protocolo binario.
+    Revisión para la Waveshare ESP32-C6-LCD-1.47 (sin touch, firmware 1.2.0): las acciones se disparan
+    con el botón BOOT y siguen enviándose como touch.tap con source "button". Número de protocolo: 1.
+    Detalle completo en CONTRATO.md.
+servers:
+  customer:
+    host: display.example.com
+    protocol: wss
+    pathname: /ws/device
+    security:
+      - $ref: '#/components/securitySchemes/deviceBearer'
+channels:
+  deviceSocket:
+    address: /ws/device
+    messages:
+      hello: {$ref: '#/components/messages/DeviceHello'}
+      templateSet: {$ref: '#/components/messages/TemplateSet'}
+      dataUpdate: {$ref: '#/components/messages/DataUpdate'}
+      touchTap: {$ref: '#/components/messages/TouchTap'}
+      uiResult: {$ref: '#/components/messages/UiResult'}
+operations:
+  receiveScreen:
+    action: receive
+    channel: {$ref: '#/channels/deviceSocket'}
+    summary: Servidor publica template.set, data.update, ui.result y comandos
+  sendTouch:
+    action: send
+    channel: {$ref: '#/channels/deviceSocket'}
+    summary: ESP32 publica device.hello, touch.tap (botón BOOT) y ACKs
+components:
+  securitySchemes:
+    deviceBearer:
+      type: http
+      scheme: bearer
+  messages:
+    DeviceHello:
+      name: device.hello
+      payload:
+        type: object
+        required: [type, protocol, deviceId, display]
+        properties:
+          type: {const: device.hello}
+          protocol: {const: 1}
+          deviceId: {type: string, pattern: '^md-[0-9A-F]{12}$', description: Derivado de la MAC; el servidor debe tenerlo registrado}
+          firmware: {type: string, examples: ['1.2.0']}
+          display:
+            type: object
+            properties:
+              width: {const: 172}
+              height: {const: 320}
+              touch: {const: false}
+              color: {const: RGB565}
+          template:
+            type: object
+            description: Plantilla en caché; id vacío y version 0 si no hay ninguna
+            properties:
+              id: {type: string}
+              version: {type: integer}
+          capabilities:
+            type: array
+            items: {type: string}
+            examples: [[text, rect, line, button, progress, touch.tap, ui.result, template.cache]]
+    TemplateSet:
+      name: template.set
+      payload:
+        type: object
+        required: [type, template]
+        properties:
+          type: {const: template.set}
+          template: {type: object}
+    DataUpdate:
+      name: data.update
+      payload:
+        type: object
+        required: [type, templateVersion, strategy, values]
+        properties:
+          type: {const: data.update}
+          templateVersion: {type: integer}
+          strategy: {enum: [snapshot, patch]}
+          values: {type: object}
+    TouchTap:
+      name: touch.tap
+      payload:
+        type: object
+        required: [type, eventId, deviceId, actionId, x, y, templateVersion]
+        properties:
+          type: {const: touch.tap}
+          source: {const: button, description: Origen de la pulsación; x,y es el centro de la caja de la acción}
+          name: {type: string, description: event de la acción, o tap si no tiene}
+          templateId: {type: string}
+          uptimeMs: {type: integer}
+          eventId: {type: string}
+          deviceId: {type: string}
+          actionId: {type: string}
+          x: {type: integer}
+          y: {type: integer}
+          templateVersion: {type: integer}
+    UiResult:
+      name: ui.result
+      payload:
+        type: object
+        required: [type, eventId, status]
+        properties:
+          type: {const: ui.result}
+          eventId: {type: string}
+          status: {enum: [ok, rejected, error]}
+          toast: {type: string, description: Se muestra recortado a 24 caracteres}
+          patch: {type: object, description: Fusiona valores}
+          replace: {type: object, description: Sustituye todos los valores}

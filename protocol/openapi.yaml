@@ -1,0 +1,185 @@
+openapi: 3.1.0
+info:
+  title: MetaDisplay Device Management API
+  version: 1.1.0
+  summary: API opcional del servidor de cada cliente para publicar plantillas/datos al ESP32-C6.
+  description: Revisión para la Waveshare ESP32-C6-LCD-1.47 (sin touch); las acciones se ejecutan con el botón BOOT. Ver CONTRATO.md.
+servers:
+  - url: https://display.example.com
+security:
+  - AdminBearer: []
+components:
+  securitySchemes:
+    AdminBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+  schemas:
+    Element:
+      type: object
+      required: [type, x, y]
+      properties:
+        type: {type: string, enum: [text, rect, line, button, progress]}
+        x: {type: integer, minimum: 0, maximum: 171}
+        y: {type: integer, minimum: 0, maximum: 319}
+        w: {type: integer, minimum: 1, maximum: 172}
+        h: {type: integer, minimum: 1, maximum: 320}
+        x2: {type: integer, minimum: 0, maximum: 171}
+        y2: {type: integer, minimum: 0, maximum: 319}
+        value: {}
+        bind: {type: string, maxLength: 40}
+        size: {type: integer, minimum: 1, maximum: 4}
+        color: {type: string, pattern: '^#[0-9a-fA-F]{6}$'}
+        fillColor: {type: string, pattern: '^#[0-9a-fA-F]{6}$'}
+        filled: {type: boolean}
+        radius: {type: integer, minimum: 0, maximum: 10}
+    TouchAction:
+      type: object
+      description: Acción de la plantilla. En la placa sin touch se ejecuta con el botón BOOT; la caja x,y,w,h marca la acción en pantalla.
+      required: [id, trigger, mode, x, y, w, h]
+      properties:
+        id: {type: string, minLength: 1, maxLength: 48}
+        trigger: {const: tap}
+        mode: {type: string, enum: [local, remote, hybrid]}
+        event: {type: string}
+        x: {type: integer, minimum: 0, maximum: 171}
+        y: {type: integer, minimum: 0, maximum: 319}
+        w: {type: integer, minimum: 1, maximum: 172}
+        h: {type: integer, minimum: 1, maximum: 320}
+        local:
+          type: object
+          properties:
+            kind: {type: string, enum: [feedback, set_value]}
+            message: {type: string, maxLength: 24}
+            key: {type: string, maxLength: 40}
+            value: {}
+    Template:
+      type: object
+      required: [id, version, elements, actions]
+      properties:
+        id: {type: string, maxLength: 64}
+        version: {type: integer, minimum: 0}
+        background: {type: string, pattern: '^#[0-9a-fA-F]{6}$'}
+        elements: {type: array, maxItems: 45, items: {$ref: '#/components/schemas/Element'}}
+        actions: {type: array, maxItems: 24, items: {$ref: '#/components/schemas/TouchAction'}}
+    Values:
+      type: object
+      maxProperties: 64
+      additionalProperties:
+        oneOf:
+          - type: string
+            maxLength: 140
+          - type: number
+          - type: boolean
+          - type: 'null'
+    Error:
+      type: object
+      properties:
+        error: {type: string}
+paths:
+  /api/v1/health:
+    get:
+      summary: Comprobar servicio
+      security: []
+      responses:
+        '200':
+          description: Operativo
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: {const: ok}
+                  protocol: {const: 1}
+  /api/v1/devices/{deviceId}:
+    parameters:
+      - name: deviceId
+        in: path
+        required: true
+        schema: {type: string}
+    get:
+      summary: Leer estado del dispositivo
+      responses:
+        '200': {description: Estado y conexión del dispositivo}
+        '401': {description: No autorizado}
+  /api/v1/devices/{deviceId}/template:
+    parameters:
+      - name: deviceId
+        in: path
+        required: true
+        schema: {type: string}
+    put:
+      summary: Publicar plantilla completa al dispositivo
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/Template'}
+      responses:
+        '200': {description: Plantilla publicada}
+        '422': {description: Plantilla inválida}
+        '401': {description: No autorizado}
+  /api/v1/devices/{deviceId}/data:
+    parameters:
+      - name: deviceId
+        in: path
+        required: true
+        schema: {type: string}
+    put:
+      summary: Reemplazar todos los valores
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/Values'}
+      responses:
+        '200': {description: Snapshot publicado}
+        '422': {description: Datos inválidos}
+    patch:
+      summary: Actualizar parcialmente los valores
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/Values'}
+      responses:
+        '200': {description: Patch publicado}
+        '422': {description: Datos inválidos}
+  /api/v1/devices/{deviceId}/events:
+    parameters:
+      - name: deviceId
+        in: path
+        required: true
+        schema: {type: string}
+    get:
+      summary: Últimos eventos de acciones observados
+      responses:
+        '200': {description: Eventos de acciones recientes (touch.tap)}
+
+  /api/v1/devices/{deviceId}/commands:
+    parameters:
+      - name: deviceId
+        in: path
+        required: true
+        schema: {type: string}
+    post:
+      summary: Enviar comando al dispositivo conectado
+      description: Solo allowlist. Operaciones sensibles deben estar autorizadas por operador.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type]
+              properties:
+                type: {type: string, enum: [display.refresh, display.brightness, trust.stage, trust.activate, ota.install]}
+                percent: {type: integer, minimum: 0, maximum: 50}
+                caDerBase64: {type: string}
+                url: {type: string, format: uri}
+                sha256: {type: string}
+                signature: {type: string}
+      responses:
+        '202': {description: Comando enviado al WebSocket activo}
+        '409': {description: Dispositivo desconectado}
+        '422': {description: Tipo de comando no permitido}
