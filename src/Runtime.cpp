@@ -40,7 +40,6 @@ bool Runtime::validTemplate(JsonVariantConst v){
   if(!v.is<JsonObjectConst>() || !v["id"].is<const char*>() || !v["version"].is<uint32_t>())return false;
   if(strlen(v["id"].as<const char*>())>64)return false;
   if(!v["elements"].is<JsonArrayConst>() || v["elements"].as<JsonArrayConst>().size()>45)return false;
-  if(!v["actions"].isNull() && (!v["actions"].is<JsonArrayConst>() || v["actions"].as<JsonArrayConst>().size()>24))return false;
   for(JsonObjectConst o:v["elements"].as<JsonArrayConst>()){
     String kind=o["type"]|"";
     if(!validElementType(kind) || !inBounds(o,kind=="rect"||kind=="button"||kind=="progress"))return false;
@@ -48,14 +47,6 @@ bool Runtime::validTemplate(JsonVariantConst v){
       int x2=o["x2"]|(-1), y2=o["y2"]|(-1);
       if(x2<0||x2>=board::WIDTH||y2<0||y2>=board::HEIGHT)return false;
     }
-  }
-  for(JsonObjectConst a:v["actions"].as<JsonArrayConst>()){
-    const char* id=a["id"]|"";
-    if(strlen(id)==0||strlen(id)>48||!inBounds(a,true))return false;
-    String mode=a["mode"]|"remote";
-    if(mode!="local" && mode!="remote" && mode!="hybrid")return false;
-    String trigger=a["trigger"]|"tap";
-    if(trigger!="tap")return false;
   }
   return true;
 }
@@ -69,12 +60,12 @@ bool Runtime::persistTemplate(){
 }
 void Runtime::sendHello(){
   JsonDocument d;d["type"]="device.hello";d["protocol"]=1;
-  d["deviceId"]=deviceId_;d["firmware"]="1.0.0-touch";
+  d["deviceId"]=deviceId_;d["firmware"]="1.0.0";
   d["display"]["width"]=board::WIDTH;d["display"]["height"]=board::HEIGHT;
-  d["display"]["touch"]=true;d["display"]["color"]="RGB565";
+  d["display"]["touch"]=false;d["display"]["color"]="RGB565";
   d["template"]["id"]=templateId_;d["template"]["version"]=templateVersion_;
   JsonArray c=d["capabilities"].to<JsonArray>();
-  for(auto cap:{"text","rect","line","button","progress","touch.tap","ui.result","template.cache"})c.add(cap);
+  for(auto cap:{"text","rect","line","button","progress","template.cache"})c.add(cap);
   String out;serializeJson(d,out);socket_->send(out);
 }
 void Runtime::connected(bool up){if(up){config_->confirmTrial();sendHello();}dirty_=true;}
@@ -94,14 +85,6 @@ void Runtime::dataUpdate(JsonVariantConst v,bool replace){
     if(!p.value().is<JsonObjectConst>() && !p.value().is<JsonArrayConst>())data_[p.key()].set(p.value());
   }
   dirty_=true;dataDirty_=true;
-}
-void Runtime::ackEvent(const char* id){if(!id)return;for(auto &p:pending_)if(p.active && p.id==id){p.active=false;return;}}
-void Runtime::handleResult(JsonVariantConst d){
-  ackEvent(d["eventId"]|"");
-  const char* toast=d["toast"]|"";
-  if(*toast)display_->feedback(String(toast).substring(0,24));
-  if(d["patch"].is<JsonObjectConst>())dataUpdate(d["patch"],false);
-  if(d["replace"].is<JsonObjectConst>())dataUpdate(d["replace"],true);
 }
 void Runtime::incoming(const String& text){
   if(text.length()>8192)return;
@@ -125,10 +108,6 @@ void Runtime::incoming(const String& text){
       dataUpdate(d["values"],replace);
       sendAck("data.ack",true);
     }
-  } else if(kind=="ui.result"){
-    handleResult(d.as<JsonVariantConst>());
-  } else if(kind=="event.ack"){
-    ackEvent(d["eventId"]|"");
   } else if(kind=="trust.stage"){
     bool ok=config_->stagePrivateCA(String(d["caDerBase64"]|""));
     JsonDocument ack;ack["type"]="trust.ack";ack["operation"]="stage";ack["ok"]=ok;
@@ -150,63 +129,12 @@ void Runtime::incoming(const String& text){
     display_->setBrightness(constrain((int)(d["percent"]|30),0,50));
   }
 }
-void Runtime::localAction(JsonVariantConst a){
-  const String kind=a["kind"]|"";
-  if(kind=="feedback")display_->feedback(String(a["message"]|"Procesando...").substring(0,24));
-  else if(kind=="set_value"){
-    const char* key=a["key"]|"";
-    if(strlen(key)>0&&strlen(key)<=40 && !a["value"].is<JsonObjectConst>()&&!a["value"].is<JsonArrayConst>()){
-      data_[key].set(a["value"]);dirty_=true;dataDirty_=true;
-    }
-  }
-}
-void Runtime::sendEvent(const String& eventId,const String& json){
-  for(auto &p:pending_){
-    if(!p.active){p.id=eventId;p.json=json;p.lastSent=0;p.active=true;return;}
-  }
-  display_->feedback("Cola de eventos llena",0xF800);
-}
-void Runtime::tap(uint16_t x,uint16_t y){
-  if(!hasTemplate_)return;
-  // Later actions are topmost when hitboxes overlap.
-  JsonObjectConst match;
-  for(JsonObjectConst a:tmpl_["actions"].as<JsonArrayConst>()){
-    int ax=a["x"]|0,ay=a["y"]|0,w=a["w"]|0,h=a["h"]|0;
-    if(x>=ax&&x<ax+w&&y>=ay&&y<ay+h)match=a;
-  }
-  if(match.isNull())return;
-  String mode=match["mode"]|"remote";
-  if(mode=="local"||mode=="hybrid")localAction(match["local"]);
-  if(mode=="remote"||mode=="hybrid"){
-    if(mode=="remote" && !socket_->connected())display_->feedback("Sin conexion",0xF800);
-    JsonDocument event;event["type"]="touch.tap";
-    String eventId=deviceId_+"-"+String((unsigned long)millis())+"-"+String(++sequence_);
-    event["eventId"]=eventId;event["deviceId"]=deviceId_;
-    event["actionId"]=match["id"]|"";
-    event["name"]=match["event"]|"tap";
-    event["x"]=x;event["y"]=y;
-    event["templateId"]=templateId_;event["templateVersion"]=templateVersion_;
-    event["uptimeMs"]=millis();
-    String out;serializeJson(event,out);sendEvent(eventId,out);
-  }
-}
 void Runtime::loop(){
-  if(socket_->connected()){
-    uint32_t now=millis();
-    for(auto &p:pending_){
-      if(p.active && (!p.lastSent || now-p.lastSent>5000)){
-        if(socket_->send(p.json))p.lastSent=now;
-      }
-    }
-  }else{
-    for(auto &p:pending_)if(p.active)p.lastSent=0;
-  }
   if(dataDirty_ && millis()-lastPersist_>30000){
     File f=LittleFS.open("/values.tmp","w");
     if(f){serializeJson(data_,f);f.close();LittleFS.remove("/values.json");
       if(LittleFS.rename("/values.tmp","/values.json")){lastPersist_=millis();dataDirty_=false;}}
   }
-  if(display_->serviceFeedback())dirty_=true;
   if(dirty_ && millis()-lastDraw_>120){
     lastDraw_=millis();dirty_=false;
     if(hasTemplate_)display_->render(tmpl_.as<JsonVariantConst>(),data_.as<JsonVariantConst>(),socket_->connected());

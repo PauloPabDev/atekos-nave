@@ -3,8 +3,9 @@
 #include <esp_system.h>
 namespace {
   String randomPassword(){
-    const char alphabet[]="ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
-    String v; for(int i=0;i<14;i++) v+=alphabet[esp_random()%(sizeof(alphabet)-1)]; return v;
+    // 8 lowercase letters (WPA2 minimum) so it is easy to type on a phone; no l/o.
+    const char alphabet[]="abcdefghijkmnpqrstuvwxyz";
+    String v; for(int i=0;i<8;i++) v+=alphabet[esp_random()%(sizeof(alphabet)-1)]; return v;
   }
   bool validUrl(const String &url){
     return url.length()>=12 && url.length()<=240 && url.startsWith("wss://") &&
@@ -49,7 +50,7 @@ bool Config::begin(Display& display){
     if(!staged.isEmpty() && !settings_.caPem.isEmpty())settings_.caPem+="\n"+staged;
   }
   settings_.portalPass=prefs_.getString("ap-pass","");
-  if(settings_.portalPass.length()<12){settings_.portalPass=randomPassword();prefs_.putString("ap-pass",settings_.portalPass);}
+  if(settings_.portalPass.length()!=8){settings_.portalPass=randomPassword();prefs_.putString("ap-pass",settings_.portalPass);}
   WiFi.mode(WIFI_STA); WiFi.setAutoReconnect(true);
   if(settings_.url.isEmpty() || settings_.token.isEmpty()) return portal(display);
   WiFi.begin();
@@ -64,8 +65,8 @@ bool Config::portal(Display& display){
   wm.setConnectTimeout(12);
   wm.setBreakAfterConfig(true);
   wm.setCaptivePortalEnable(true);
-  // AP password is random per unit and shown physically on its LCD.
-  display.status("Red: MetaDisplay-Setup", "Clave: "+settings_.portalPass);
+  wm.setConfigPortalBlocking(false);
+  const char* ssid="MetaDisplay-Setup";
   char url[248]={0},token[390]={0},caBody[3008]={0};
   settings_.url.toCharArray(url,sizeof(url));
   settings_.token.toCharArray(token,sizeof(token));
@@ -74,8 +75,17 @@ bool Config::portal(Display& display){
   WiFiManagerParameter tokenP("token","Bearer token (sin prefijo)",token,sizeof(token));
   WiFiManagerParameter caP("ca","CA privada en base64 DER (opcional)",caBody,sizeof(caBody));
   wm.addParameter(&urlP);wm.addParameter(&tokenP);wm.addParameter(&caP);
-  bool ok=wm.startConfigPortal("MetaDisplay-Setup",settings_.portalPass.c_str());
-  if(!ok || WiFi.status()!=WL_CONNECTED) return false;
+  wm.startConfigPortal(ssid,settings_.portalPass.c_str());
+  // AP password is random per unit and shown physically on its LCD; the screen
+  // switches when a phone joins or leaves. Portal stops on save or timeout.
+  int clients=-1;
+  while(wm.getConfigPortalActive()){
+    if(wm.process())break;
+    int now=WiFi.softAPgetStationNum();
+    if(now!=clients){clients=now;Serial.printf("AP clients: %d\n",clients);display.portalInfo(ssid,settings_.portalPass,WiFi.softAPIP().toString(),clients>0);}
+    delay(10);
+  }
+  if(WiFi.status()!=WL_CONNECTED) return false;
   String newUrl(urlP.getValue()),newToken(tokenP.getValue()),newCa(caP.getValue());
   if(newCa.isEmpty() && !settings_.caPem.isEmpty()){
     // Preserve private CA if user just reconfigures WiFi.

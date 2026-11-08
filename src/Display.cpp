@@ -2,38 +2,14 @@
 #include "Board.h"
 #include <stdlib.h>
 
-// JD9853 Waveshare panel uses ST7789-compatible drawing with vendor register init.
-// Register sequence references the vendor's public JD9853 example.
-namespace {
-const uint8_t panelInit[] = {
-  BEGIN_WRITE, WRITE_COMMAND_8, 0x11, END_WRITE, DELAY, 120,
-  BEGIN_WRITE,
-  WRITE_C8_D16, 0xDF, 0x98, 0x53,
-  WRITE_C8_D8, 0xB2, 0x23,
-  WRITE_COMMAND_8, 0xB7, WRITE_BYTES, 4, 0x00,0x47,0x00,0x6F,
-  WRITE_COMMAND_8, 0xBB, WRITE_BYTES, 6, 0x1C,0x1A,0x55,0x73,0x63,0xF0,
-  WRITE_C8_D16, 0xC0, 0x44,0xA4,
-  WRITE_C8_D8, 0xC1, 0x16,
-  WRITE_COMMAND_8, 0xC3, WRITE_BYTES, 8, 0x7D,0x07,0x14,0x06,0xCF,0x71,0x72,0x77,
-  WRITE_COMMAND_8, 0xC4, WRITE_BYTES, 12, 0x00,0x00,0xA0,0x79,0x0B,0x0A,0x16,0x79,0x0B,0x0A,0x16,0x82,
-  WRITE_COMMAND_8, 0xC8, WRITE_BYTES, 32,
-  0x3F,0x32,0x29,0x29,0x27,0x2B,0x27,0x28,0x28,0x26,0x25,0x17,0x12,0x0D,0x04,0x00,
-  0x3F,0x32,0x29,0x29,0x27,0x2B,0x27,0x28,0x28,0x26,0x25,0x17,0x12,0x0D,0x04,0x00,
-  WRITE_COMMAND_8, 0x21,
-  END_WRITE, DELAY, 10,
-  BEGIN_WRITE, WRITE_COMMAND_8, 0x29, END_WRITE
-};
-}
-
 bool Display::begin(){
   pinMode(board::SD_CS, OUTPUT); digitalWrite(board::SD_CS, HIGH);
   pinMode(board::LCD_BL, OUTPUT); digitalWrite(board::LCD_BL, LOW);
-  bus_ = new Arduino_ESP32SPI(board::LCD_DC, board::LCD_CS, board::LCD_SCK, board::LCD_MOSI, -1);
+  bus_ = new Arduino_HWSPI(board::LCD_DC, board::LCD_CS, board::LCD_SCK, board::LCD_MOSI);
+  // IPS=true turns on color inversion, which this panel needs. begin() is true even with
+  // wrong pins (SPI has no reply), so only looking at the screen confirms it.
   gfx_ = new Arduino_ST7789(bus_, board::LCD_RST, 0, true, board::WIDTH, board::HEIGHT, 34,0,34,0);
   if(!gfx_->begin(20000000)) return false;
-  bus_->batchOperation(panelInit, sizeof(panelInit));
-  gfx_->setRotation(0);
-  gfx_->invertDisplay(true);
   setBrightness(board::BACKLIGHT_PERCENT);
   status("MetaDisplay C6", "Iniciando...");
   return true;
@@ -54,6 +30,42 @@ void Display::status(const String& line1, const String& line2){
   gfx_->setCursor(8,42); gfx_->print("MetaDisplay");
   gfx_->setTextSize(1); gfx_->setCursor(8,102); gfx_->print(line1);
   gfx_->setCursor(8,121); gfx_->print(line2);
+}
+void Display::portalInfo(const String& ssid,const String& pass,const String& ip,bool clientJoined){
+  if(!gfx_) return;
+  gfx_->fillScreen(0x0809);
+  // Text above size 1 is centered; the built-in font is 6px wide per size step.
+  auto line=[&](int y,uint8_t size,uint16_t c,const String& s){
+    gfx_->setTextSize(size); gfx_->setTextColor(c);
+    gfx_->setCursor(size>1?max(0,(board::WIDTH-(int)s.length()*6*size)/2):8,y); gfx_->print(s);
+  };
+  // 192.168.4.1 is the ESP32 soft-AP address when no static IP is set.
+  const String ipNote=ip=="192.168.4.1"?"   (IP predeterminada)":"";
+  line(14,2,0xffff,"MetaDisplay");
+  if(clientJoined){
+    line(38,1,0xC618,"Modo configuracion");
+    line(84,2,0x07E0,"Alguien se");
+    line(104,2,0x07E0,"conecto");
+    line(150,1,0xffff,"Abre en el navegador:");
+    line(164,2,0x07FF,ip);
+    line(186,1,0xC618,ipNote);
+    line(220,1,0xffff,"Si la pagina no se abre");
+    line(232,1,0xffff,"sola, escribe esa IP.");
+    return;
+  }
+  line(38,1,0xC618,"Sin red: modo configuracion");
+  line(62,1,0xffff,"1. Conecta tu movil a");
+  line(74,1,0xffff,"   la red WiFi:");
+  line(88,1,0x07FF,"   "+ssid);
+  line(112,1,0xffff,"2. Clave de la red:");
+  line(126,3,0xFFE0,pass);
+  line(162,1,0xffff,"3. Abre en el navegador:");
+  line(176,2,0x07FF,ip);
+  line(198,1,0xC618,ipNote);
+  line(222,1,0xffff,"4. Elige tu WiFi, pon el");
+  line(234,1,0xffff,"   servidor y el token,");
+  line(246,1,0xffff,"   y pulsa Save.");
+  line(284,1,0xC618,"Esperando conexion...");
 }
 String Display::text(JsonObjectConst el, JsonVariantConst data){
   const char* bind=el["bind"] | "";
@@ -100,16 +112,4 @@ void Display::render(JsonVariantConst layout,JsonVariantConst values,bool online
     }
   }
   gfx_->fillCircle(board::WIDTH-7,7,3,online?0x07E0:0xF800);
-  if(feedbackActive_) serviceFeedback();
-}
-void Display::feedback(const String& message,uint16_t col,uint32_t durationMs){
-  if(!gfx_) return;
-  feedbackUntil_=millis()+durationMs; feedbackActive_=true;
-  gfx_->fillRoundRect(5,board::HEIGHT-40,board::WIDTH-10,35,5,0x2104);
-  gfx_->setTextColor(col);gfx_->setTextSize(1);gfx_->setCursor(11,board::HEIGHT-27);
-  gfx_->print(message.substring(0,24));
-}
-bool Display::serviceFeedback(){
-  if(feedbackActive_ && (int32_t)(millis()-feedbackUntil_)>=0){feedbackActive_=false;return true;}
-  return false;
 }
