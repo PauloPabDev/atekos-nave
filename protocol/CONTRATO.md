@@ -10,6 +10,8 @@ Archivos de esta carpeta:
 
 Comandos de la consola serie para diagnosticar el dispositivo: [`../docs/comandos-consola.md`](../docs/comandos-consola.md).
 
+> **Firmware 1.3.0: contrato 1.1.** Este documento describe el contrato 1.0. El firmware 1.3.0 implementa además el contrato 1.1 de atekos: rotación, formas nuevas, grosor, imágenes, `params`/`binds`/`when`/`format`, animación, acciones de botón físico, `display.buttons` en el `hello`, `source`/`button`/`press` en `touch.tap` y mensajes troceados (`frag`/`frag.ack`). Ya no hay tope de 45 elementos ni de 24 acciones. La referencia de esos campos es el contrato publicado: https://atekos.toxolinko.site/contrato.
+
 > **Cambios respecto a la versión para la Touch-LCD-1.47.** El número de protocolo sigue siendo `1` y los mensajes son compatibles. Lo que cambia es el hardware:
 > - Las acciones se disparan con el botón BOOT (sección 5), no con la pantalla táctil.
 > - `device.hello` envía `display.touch=false`.

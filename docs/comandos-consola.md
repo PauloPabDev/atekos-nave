@@ -1,6 +1,6 @@
 # Comandos de consola serie
 
-Estado: **aprobado e implementado** en el firmware 1.2.0 (código en [`src/Console.cpp`](../src/Console.cpp)).
+Estado: **aprobado e implementado** desde el firmware 1.2.0; al día con la 1.3.0 (código en [`src/Console.cpp`](../src/Console.cpp)).
 
 ## Uso
 
@@ -18,7 +18,7 @@ En la columna **Portal**, ✅ significa que el comando también funciona con el 
 | --- | --- | --- |
 | `help` | ✅ | Lista los comandos que valen en el modo actual. |
 | `id` | ✅ | Imprime el `deviceId` (p. ej. `md-34B7DA01ABCD`) que hay que registrar en el servidor. |
-| `status` | | Firmware, id, tiempo encendida, memoria libre, WiFi (SSID, dBm, IP), estado del WSS con el último error y el siguiente reintento, plantilla y eventos sin confirmar. |
+| `status` | | Firmware, id, tiempo encendida, memoria libre y bloque libre más grande, WiFi (SSID, dBm, IP), estado del WSS con el último error y el siguiente reintento, plantilla, eventos sin confirmar y, si está llegando un mensaje troceado (`frag`), cuántos trozos y bytes lleva. |
 | `config` | ✅ | URL, token enmascarado (`****` + últimos 4), si la CA es privada o pública, y la clave del portal. |
 | `set-url <wss://...>` | ✅ | Valida y guarda la URL, y reconecta el WSS. Durante el portal solo la guarda: usa `reboot` para salir del portal. |
 | `set-token <token>` | ✅ | Igual que `set-url`, pero con el token. El token queda visible en el historial del monitor. |
@@ -29,10 +29,10 @@ En la columna **Portal**, ✅ significa que el comando también funciona con el 
 | `wss-off` / `wss-on` | | Desconecta el WSS y no reconecta hasta `wss-on`. |
 | `log wss on\|off` | | Imprime cada JSON que entra (`[WSS <]`) y sale (`[WSS >]`). El token nunca aparece. Se desactiva al reiniciar. |
 | `send <json>` | | Envía un objeto JSON tal cual al servidor. Antes valida que sea JSON. |
-| `press` / `press-long` | | Simula una pulsación corta o larga del botón BOOT. Ejecuta de verdad la acción en el servidor. |
-| `actions` | | Lista las acciones de la plantilla; la marcada con `*` es la que ejecuta el botón. |
+| `press` / `press-long` | | Simula una pulsación corta o larga del botón 0 (BOOT). Ejecuta de verdad la acción en el servidor. |
+| `actions` | | Lista las acciones de la plantilla, con `boton=N corta\|larga` en las de botón físico. Si la plantilla no tiene acciones de botón, la marcada con `*` es la que ejecuta el BOOT. |
 | `brightness <0-50>` | | Cambia el brillo. No se guarda: al reiniciar vuelve al 18 %. |
-| `template` | | Imprime el JSON de la plantilla guardada. |
+| `template` | | Imprime el JSON de la plantilla guardada, sin los píxeles: el `data` de cada imagen sale como `@offset:longitud`, su posición en `/template.raw`. |
 | `values` | | Imprime los valores actuales. |
 | `clear-template` | | Borra la plantilla en caché y reconecta para que el servidor la reenvíe. |
 | `reboot` | ✅ | Reinicia la placa. |

@@ -19,8 +19,8 @@ namespace {
     {"wss-on","","vuelve a conectar el WSS",false},
     {"log","wss on|off","imprime los mensajes que entran y salen por el WSS",false},
     {"send","<json>","envia un JSON al servidor",false},
-    {"press","","simula una pulsacion corta del boton",false},
-    {"press-long","","simula una pulsacion larga del boton",false},
+    {"press","","simula una pulsacion corta del boton 0 (BOOT)",false},
+    {"press-long","","simula una pulsacion larga del boton 0 (BOOT)",false},
     {"actions","","lista las acciones de la plantilla",false},
     {"brightness","<0-50>","cambia el brillo",false},
     {"template","","imprime la plantilla guardada",false},
@@ -76,8 +76,10 @@ void Console::run(const String& cmd,const String& arg){
   }else if(cmd=="id"){
     Serial.println("[CMD] id: "+Config::deviceId());
   }else if(cmd=="status"){
-    Serial.printf("[CMD] firmware %s, id %s, encendida %lus, memoria libre %u B\n",
-      FIRMWARE_VERSION,Config::deviceId().c_str(),millis()/1000,ESP.getFreeHeap());
+    // The largest block decides whether a full-screen canvas (~110 KB) would fit, to animate without flicker.
+    Serial.printf("[CMD] firmware %s, id %s, encendida %lus, memoria libre %u B, bloque mayor %u B\n",
+      FIRMWARE_VERSION,Config::deviceId().c_str(),millis()/1000,(unsigned)ESP.getFreeHeap(),
+      (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
     if(WiFi.status()==WL_CONNECTED)
       Serial.printf("[CMD] WiFi: %s, %d dBm, IP %s\n",WiFi.SSID().c_str(),WiFi.RSSI(),WiFi.localIP().toString().c_str());
     else Serial.println("[CMD] WiFi: desconectada");
@@ -125,7 +127,7 @@ void Console::run(const String& cmd,const String& arg){
     if(!wss_->connected()){Serial.println("[CMD] WSS desconectado, no se envia");return;}
     Serial.println(wss_->send(arg)?"[CMD] enviado":"[CMD] fallo el envio");
   }else if(cmd=="press" || cmd=="press-long"){
-    if(!runtime_->button(cmd=="press-long"))Serial.println("[CMD] no hay plantilla con acciones");
+    if(!runtime_->button(0,cmd=="press-long"))Serial.println("[CMD] no hay plantilla con acciones");
     else Serial.println("[CMD] "+cmd+" simulado");
   }else if(cmd=="actions"){
     runtime_->printActions(Serial);

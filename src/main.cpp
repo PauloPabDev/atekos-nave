@@ -13,18 +13,20 @@ WssClient wss;
 Runtime runtime;
 Console console;
 uint32_t wifiLost=0, wifiRetry=0;
-uint32_t buttonDown=0; bool buttonHeld=false;
+uint32_t buttonDown[board::BUTTON_COUNT]={0}; bool buttonHeld[board::BUTTON_COUNT]={false};
 constexpr size_t MAX_SERIAL_RX=2048;
 
-// Short press (>=30 ms, debounce) runs the selected action; holding 700 ms selects the next one.
-void pollButton(){
+// Per button: a long press fires once at 700 ms held; a short one on release after 30-700 ms (debounce).
+void pollButtons(){
   const uint32_t now=millis();
-  if(digitalRead(board::BUTTON)==LOW){
-    if(!buttonDown)buttonDown=now;
-    else if(!buttonHeld && now-buttonDown>=700){buttonHeld=true;runtime.button(true);}
-  }else if(buttonDown){
-    if(!buttonHeld && now-buttonDown>=30)runtime.button(false);
-    buttonDown=0;buttonHeld=false;
+  for(int i=0;i<board::BUTTON_COUNT;i++){
+    if(digitalRead(board::BUTTONS[i])==LOW){
+      if(!buttonDown[i])buttonDown[i]=now;
+      else if(!buttonHeld[i] && now-buttonDown[i]>=700){buttonHeld[i]=true;runtime.button(i,true);}
+    }else if(buttonDown[i]){
+      if(!buttonHeld[i] && now-buttonDown[i]>=30)runtime.button(i,false);
+      buttonDown[i]=0;buttonHeld[i]=false;
+    }
   }
 }
 
@@ -33,7 +35,7 @@ void setup(){
   Serial.begin(115200);
   console.begin(display,config,wss,runtime);
   config.onPortalTick([]{console.poll();});
-  pinMode(board::BUTTON,INPUT_PULLUP);
+  for(int pin:board::BUTTONS)pinMode(pin,INPUT_PULLUP);
   if(!display.begin(Config::deviceId()))Serial.println("Display init failed");
   bool configured=config.begin(display);
   // No network after the portal: reboot to retry WiFi and reopen the AP (keeps any error visible 3s).
@@ -49,7 +51,7 @@ void setup(){
 
 void loop(){
   console.poll();
-  pollButton();
+  pollButtons();
   if(WiFi.status()!=WL_CONNECTED){
     if(!wifiLost)wifiLost=millis();
     if(millis()-wifiRetry>12000){wifiRetry=millis();WiFi.reconnect();}

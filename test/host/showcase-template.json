@@ -1,0 +1,292 @@
+{
+  "id": "showcase.v1",
+  "version": 1,
+  "rotation": 90,
+  "background": "#090D18",
+  "params": {
+    "temp": {
+      "type": "number",
+      "default": 21,
+      "min": -20,
+      "max": 60,
+      "description": "Temperatura en grados"
+    },
+    "nivel": {
+      "type": "number",
+      "default": 40,
+      "min": 0,
+      "max": 100,
+      "description": "Nivel del depósito (0 a 100)"
+    },
+    "angulo": {
+      "type": "number",
+      "default": 90,
+      "min": -90,
+      "max": 270,
+      "description": "Final del arco del indicador, en grados"
+    },
+    "alarma": {
+      "type": "boolean",
+      "default": false,
+      "description": "Muestra el aviso rojo"
+    },
+    "estado": {
+      "type": "string",
+      "default": "OK",
+      "description": "Texto de estado"
+    }
+  },
+  "elements": [
+    {
+      "type": "text",
+      "x": 10,
+      "y": 8,
+      "size": 2,
+      "color": "#FFFFFF",
+      "value": "PANEL"
+    },
+    {
+      "type": "image",
+      "x": 300,
+      "y": 4,
+      "w": 16,
+      "h": 16,
+      "encoding": "rgb565-rle",
+      "data": "EJNfBQhjAf//BQhjAZNfBQhjAf//BQhjAZNfBQhjAf//BQhjAZNfBQhjAf//BQhjAZNfBQhjAf//BQhjAZNfBQhjAf//BQhjAZNfDf//AZNfDf//AZNfBQhjAf//BQhjAZNfBQhjAf//BQhjAZNfBQhjAf//BQhjAZNfBQhjAf//BQhjAZNfBQhjAf//BQhjAZNfBQhjAf//BQhjEJNf"
+    },
+    {
+      "type": "text",
+      "x": 10,
+      "y": 38,
+      "size": 2,
+      "color": "#B6A3FF",
+      "format": "Temp: {temp} C",
+      "when": [
+        {
+          "key": "temp",
+          "op": "gt",
+          "value": 30,
+          "set": {
+            "color": "#FF5050"
+          }
+        }
+      ]
+    },
+    {
+      "type": "progress",
+      "x": 10,
+      "y": 66,
+      "w": 180,
+      "h": 12,
+      "color": "#26395A",
+      "fillColor": "#9568FF",
+      "bind": "nivel"
+    },
+    {
+      "type": "text",
+      "x": 10,
+      "y": 84,
+      "size": 1,
+      "color": "#B2B9D2",
+      "format": "Nivel {nivel}%"
+    },
+    {
+      "type": "line",
+      "x": 10,
+      "y": 102,
+      "x2": 190,
+      "y2": 102,
+      "color": "#586180",
+      "stroke": 2
+    },
+    {
+      "type": "text",
+      "x": 10,
+      "y": 112,
+      "size": 1,
+      "color": "#FFFFFF",
+      "format": "Estado: {estado}"
+    },
+    {
+      "type": "curve",
+      "points": [
+        [
+          80,
+          160
+        ],
+        [
+          110,
+          120
+        ],
+        [
+          150,
+          168
+        ],
+        [
+          190,
+          130
+        ]
+      ],
+      "color": "#66F3BF",
+      "stroke": 2
+    },
+    {
+      "type": "polygon",
+      "points": [
+        [
+          12,
+          162
+        ],
+        [
+          32,
+          126
+        ],
+        [
+          52,
+          162
+        ]
+      ],
+      "filled": true,
+      "fillColor": "#FF5050",
+      "visible": false,
+      "binds": {
+        "visible": "alarma"
+      }
+    },
+    {
+      "type": "text",
+      "x": 26,
+      "y": 148,
+      "size": 1,
+      "color": "#FFFFFF",
+      "value": "!",
+      "visible": false,
+      "when": [
+        {
+          "key": "alarma",
+          "op": "truthy",
+          "set": {
+            "visible": true
+          }
+        }
+      ]
+    },
+    {
+      "type": "circle",
+      "x": 260,
+      "y": 66,
+      "r": 44,
+      "color": "#26395A",
+      "stroke": 3
+    },
+    {
+      "type": "arc",
+      "x": 260,
+      "y": 66,
+      "r": 36,
+      "start": -90,
+      "end": 90,
+      "color": "#9568FF",
+      "stroke": 6,
+      "binds": {
+        "end": "angulo"
+      }
+    },
+    {
+      "type": "ellipse",
+      "x": 260,
+      "y": 124,
+      "rx": 34,
+      "ry": 5,
+      "filled": true,
+      "fillColor": "#151E36"
+    },
+    {
+      "type": "rect",
+      "x": 204,
+      "y": 138,
+      "w": 112,
+      "h": 28,
+      "radius": 6,
+      "color": "#9568FF",
+      "stroke": 2
+    },
+    {
+      "type": "button",
+      "x": 206,
+      "y": 140,
+      "w": 108,
+      "h": 24,
+      "size": 1,
+      "color": "#FFFFFF",
+      "fillColor": "#6240B4",
+      "value": "BOTON 0"
+    }
+  ],
+  "animation": {
+    "repeat": 0,
+    "frames": [
+      {
+        "ms": 500,
+        "elements": [
+          {
+            "type": "circle",
+            "x": 190,
+            "y": 14,
+            "r": 4,
+            "filled": true,
+            "fillColor": "#66F3BF"
+          }
+        ]
+      },
+      {
+        "ms": 500,
+        "elements": []
+      }
+    ]
+  },
+  "actions": [
+    {
+      "id": "pulsar",
+      "trigger": "button",
+      "button": 0,
+      "press": "short",
+      "x": 204,
+      "y": 138,
+      "w": 112,
+      "h": 28,
+      "mode": "hybrid",
+      "event": "data.set",
+      "payload": {
+        "estado": "PULSADO",
+        "alarma": true
+      },
+      "local": {
+        "kind": "feedback",
+        "message": "Enviando..."
+      }
+    },
+    {
+      "id": "restablecer",
+      "trigger": "button",
+      "button": 0,
+      "press": "long",
+      "mode": "remote",
+      "event": "data.set",
+      "payload": {
+        "estado": "OK",
+        "alarma": false
+      }
+    },
+    {
+      "id": "tocar",
+      "trigger": "tap",
+      "x": 204,
+      "y": 138,
+      "w": 112,
+      "h": 28,
+      "mode": "remote",
+      "event": "data.refresh"
+    }
+  ]
+}
